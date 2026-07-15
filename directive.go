@@ -326,20 +326,20 @@ func isCloseFence(line []byte, fenceLength int) bool {
 // Container directive block parser
 // ---------------------------------------------------------------------------
 
-type containerDirectiveParser struct{}
+type containerDirectiveParser struct{ cfg *parserConfig }
 
 // NewDirectiveParser returns a goldmark block parser for :::name container
 // directives.
-func NewDirectiveParser() parser.BlockParser {
-	return &containerDirectiveParser{}
+func NewDirectiveParser(opts ...Option) parser.BlockParser {
+	return &containerDirectiveParser{cfg: applyOptions(opts)}
 }
 
 func (*containerDirectiveParser) Trigger() []byte { return []byte{':'} }
 
-func (*containerDirectiveParser) Open(_ ast.Node, reader text.Reader, _ parser.Context) (ast.Node, parser.State) {
+func (p *containerDirectiveParser) Open(_ ast.Node, reader text.Reader, _ parser.Context) (ast.Node, parser.State) {
 	line, seg := reader.PeekLine()
 	m := scanDirectiveMarkerLine(line)
-	if m == nil || m.colons < 3 {
+	if m == nil || m.colons < 3 || !p.cfg.accepts(m.name) {
 		return nil, parser.NoChildren
 	}
 
@@ -446,20 +446,20 @@ func (*closeFenceParser) CanAcceptIndentedLine() bool { return false }
 // Leaf directive block parser
 // ---------------------------------------------------------------------------
 
-type leafDirectiveParser struct{}
+type leafDirectiveParser struct{ cfg *parserConfig }
 
 // NewLeafDirectiveParser returns a goldmark block parser for single-line
 // ::name leaf directives.
-func NewLeafDirectiveParser() parser.BlockParser {
-	return &leafDirectiveParser{}
+func NewLeafDirectiveParser(opts ...Option) parser.BlockParser {
+	return &leafDirectiveParser{cfg: applyOptions(opts)}
 }
 
 func (*leafDirectiveParser) Trigger() []byte { return []byte{':'} }
 
-func (*leafDirectiveParser) Open(_ ast.Node, reader text.Reader, _ parser.Context) (ast.Node, parser.State) {
+func (p *leafDirectiveParser) Open(_ ast.Node, reader text.Reader, _ parser.Context) (ast.Node, parser.State) {
 	line, seg := reader.PeekLine()
 	m := scanDirectiveMarkerLine(line)
-	if m == nil || m.colons != 2 {
+	if m == nil || m.colons != 2 || !p.cfg.accepts(m.name) {
 		return nil, parser.NoChildren
 	}
 
@@ -490,6 +490,7 @@ func (*leafDirectiveParser) CanAcceptIndentedLine() bool { return false }
 
 type textDirectiveParser struct {
 	labelParser func() parser.Parser
+	cfg         *parserConfig
 }
 
 // NewTextDirectiveParser returns a goldmark inline parser for :name text
@@ -497,11 +498,11 @@ type textDirectiveParser struct {
 // pass the factory for your document parser so label inlines support the
 // same constructs; nil falls back to a minimal parser with the directive
 // extension registered.
-func NewTextDirectiveParser(labelParser func() parser.Parser) parser.InlineParser {
+func NewTextDirectiveParser(labelParser func() parser.Parser, opts ...Option) parser.InlineParser {
 	if labelParser == nil {
 		labelParser = defaultLabelParser
 	}
-	return &textDirectiveParser{labelParser: labelParser}
+	return &textDirectiveParser{labelParser: labelParser, cfg: applyOptions(opts)}
 }
 
 // defaultLabelParser builds the fallback label parser: goldmark defaults
@@ -542,6 +543,9 @@ func (p *textDirectiveParser) Parse(_ ast.Node, block text.Reader, _ parser.Cont
 		return nil
 	}
 	name := string(line[1:nameEnd])
+	if !p.cfg.accepts(name) {
+		return nil
+	}
 	consumed := nameEnd
 
 	node := &TextDirective{Name: name}

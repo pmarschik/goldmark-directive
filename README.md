@@ -24,10 +24,30 @@ The compatibility target is the **observed behavior** of remark-directive
 - container labels become the first child paragraph (tagged with the
   `directiveLabel` attribute); leaf/text labels become inline children
 
-## Usage
+## Setup
 
-Register the parsers directly (priorities shown are the ones the library is
-tested with):
+One call registers everything:
+
+```go
+md := goldmark.New(goldmark.WithExtensions(&directive.Extension{}))
+root := md.Parser().Parse(text.NewReader(source))
+```
+
+`Extension` optionally takes `Handlers` (typed directives, below),
+`RestrictToHandlers` (parse only the registered names, per kind — anything
+else stays literal text; `AllowedNames` does the same with an explicit
+list), and `LabelParser` (the nested parser for text-directive labels;
+pass your document parser factory so labels support the same inline
+constructs). Note the registry alone only _types_ nodes — without a
+restriction every syntactically valid directive still parses generically,
+matching remark.
+
+<details>
+<summary>Manual wiring (custom priorities / per-kind allowlists)</summary>
+
+Four parsers exist because goldmark separates block from inline parsing,
+and the container close fence must interrupt open paragraphs through the
+regular block-open machinery:
 
 ```go
 md := goldmark.New(goldmark.WithParserOptions(
@@ -42,13 +62,107 @@ md := goldmark.New(goldmark.WithParserOptions(
 ))
 ```
 
-Text-directive labels are parsed with a nested parser; pass your document
-parser factory to `NewTextDirectiveParser` so labels support the same inline
-constructs, or `nil` for a minimal default.
+Every constructor accepts `directive.WithAllowedNames(...)` for per-kind
+restriction.
 
-The AST nodes are `ContainerDirective`, `LeafDirective`, and `TextDirective`
-(with `Name`, `Attrs`, and label access); `DirectiveCloseFence` is an inert
-marker consumers should ignore.
+</details>
+
+## Adding a directive of each kind
+
+Every syntactically valid directive parses into a generic AST node
+(`ContainerDirective`, `LeafDirective`, `TextDirective` — each with `Name`
+and `Attrs`). To implement a _specific_ directive, declare a node type with
+`directive:"…"` tags and register it — attributes bind automatically
+(string, bool, ints, floats; `#id`/`.class` shorthands arrive as the `id`
+and `class` attributes).
+
+### Container directive — `:::callout`
+
+```markdown
+:::callout{level="warn" width="42"}
+Careful with that axe.
+:::
+```
+
+```go
+type Callout struct {
+    ast.BaseBlock
+    Level string `directive:"level"`
+    Width int    `directive:"width"`
+}
+
+var KindCallout = ast.NewNodeKind("Callout")
+
+func (*Callout) Kind() ast.NodeKind { return KindCallout }
+func (n *Callout) Dump(src []byte, level int) { ast.DumpHelper(n, src, level, nil, nil) }
+
+var h directive.Handlers
+directive.RegisterContainer[Callout](&h, "callout")
+```
+
+The container's children (including the label paragraph, tagged with the
+`directiveLabel` attribute) move into your node automatically.
+
+### Leaf directive — `::youtube`
+
+```markdown
+::youtube[An intro video]{id="dQw4w9WgXcQ"}
+```
+
+```go
+type YouTube struct {
+    ast.BaseBlock
+    VideoID string `directive:"id"`
+}
+
+directive.RegisterLeaf[YouTube](&h, "youtube")
+```
+
+### Text directive — `:mention`
+
+```markdown
+Ping :mention[Patrick]{id="712020:abc"} about this.
+```
+
+```go
+type Mention struct {
+    ast.BaseInline
+    Account string `directive:"id"`
+    Label   string `directive:",label"`
+}
+
+directive.RegisterText[Mention](&h, "mention")
+```
+
+The `directive:",label"` tag binds the raw label text; `LabelRoot` on the
+generic node holds the parsed label inlines when you need structure.
+
+### Wiring it up
+
+```go
+md := goldmark.New(goldmark.WithExtensions(&directive.Extension{
+    Handlers:           h,
+    RestrictToHandlers: true, // parse ONLY registered names, per kind
+}))
+```
+
+When binding isn't enough (computed fields, validation, label inspection),
+register a plain handler instead — it receives the generic node and returns
+the replacement (`nil` keeps the generic node):
+
+```go
+h.Container = map[string]func(*directive.ContainerDirective) ast.Node{
+    "callout": func(d *directive.ContainerDirective) ast.Node {
+        n := &Callout{}
+        directive.BindAttrs(n, d.Attrs)
+        if n.Level == "" { n.Level = "info" }
+        return n
+    },
+}
+```
+
+Rendering is up to you — register `renderer.NodeRenderer` implementations
+for your node kinds (this library does not ship HTML renderers).
 
 ## Development
 

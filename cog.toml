@@ -8,5 +8,4 @@
 # - build      local tooling, mise, scripts, developer setup
 # - ci         GitHub Actions and CI automation
 # - release    release flow, changelog, versioning
-[commit]
 scopes = ["parser", "ast", "docs", "build", "ci", "release"]
