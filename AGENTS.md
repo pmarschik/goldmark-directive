@@ -23,7 +23,7 @@ Scopes: defined in `cog.toml`.
 ### API Stability
 
 This is a public Go library. Breaking changes affect downstream consumers
-(github.com/pmarschik/adfast and storysmith-md build on it).
+(github.com/pmarschik/adfast builds on it).
 
 - NEVER introduce breaking API changes without asking the user first
 - Breaking changes MUST use `feat!:`/`fix!:` (major bump)
