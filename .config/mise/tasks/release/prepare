@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+#MISE description="Bump version and update CHANGELOG.md — review before running release:tag"
+#MISE sources=["CHANGELOG.md"]
+#MISE outputs=["CHANGELOG.md"]
+#USAGE flag "-f --force"          help="Skip all pre-flight checks"
+#USAGE flag "--skip-clean"        help="Skip dirty working tree check"
+#USAGE flag "--skip-cog"          help="Skip cog conventional commit check"
+#USAGE flag "--highlights <text>" help="Release highlights (shown at top of changelog section)"
+set -euo pipefail
+# shellcheck source=_lib.sh
+source "$(dirname "$0")/_lib.sh"
+
+FORCE="${usage_force:-false}"
+SKIP_CLEAN="${usage_skip_clean:-false}"
+SKIP_COG="${usage_skip_cog:-false}"
+HIGHLIGHTS="${usage_highlights:-}"
+[[ "${FORCE}" == "true" ]] && warn "Pre-flight checks skipped (--force)"
+
+echo ""
+echo -e "${bold}📝 Preparing release…${reset}"
+echo ""
+
+CLIFF="git cliff --config .config/cliff.toml"
+
+# ── detect VCS + dirty check ──────────────────────────────────────────────────
+detect_vcs
+info "VCS: ${VCS}"
+
+if [[ "${FORCE}" == "false" && "${SKIP_CLEAN}" == "false" ]]; then
+  if [[ "${VCS}" == "jj" ]]; then
+    dirty=$(jj diff -r @ --summary 2>/dev/null | grep -v '^$' || true)
+    if [[ -n "${dirty}" ]]; then
+      warn "Working copy (@) has uncommitted changes:"
+      jj diff -r @ --summary 2>/dev/null | sed 's/^/       /'
+      echo ""
+      die "Run \`jj new\` first, or pass --skip-clean to skip this check."
+    fi
+  else
+    dirty=$(git status --porcelain | grep -v '^??' || true)
+    if [[ -n "${dirty}" ]]; then
+      warn "Working tree has uncommitted changes:"
+      echo "${dirty}" | sed 's/^/       /'
+      echo ""
+      die "Commit or stash changes first, or pass --skip-clean to skip this check."
+    fi
+  fi
+fi
+
+# ── cog check ─────────────────────────────────────────────────────────────────
+if [[ "${FORCE}" == "false" && "${SKIP_COG}" == "false" ]]; then
+  info "Checking conventional commits…"
+  cog check 2>&1 | sed 's/^/       /' || die "cog check failed — fix commits before releasing, or pass --skip-cog."
+  success "Conventional commits OK"
+  echo ""
+fi
+
+# ── bump + changelog ──────────────────────────────────────────────────────────
+raw_version=$(${CLIFF} --bumped-version ${JJ_HEAD} 2>/dev/null || echo "0.1.0")
+version="v${raw_version#v}"  # ensure v prefix
+info "Bumped version: ${version}"
+
+CLIFF_EXTRA=()
+if [[ -n "${HIGHLIGHTS}" ]]; then
+  CLIFF_EXTRA=(--with-tag-message "${HIGHLIGHTS}")
+  info "Highlights: ${HIGHLIGHTS}"
+fi
+
+${CLIFF} --tag "${version}" ${JJ_HEAD} "${CLIFF_EXTRA[@]}" -o CHANGELOG.md
+success "CHANGELOG.md updated"
+
+info "Formatting CHANGELOG.md…"
+hk fix CHANGELOG.md
+success "CHANGELOG.md formatted"
+
+# ── update go.mod files: pin monorepo versions + strip replace directives ─────
+info "Pinning monorepo module versions in go.mod files…"
+discover_modules
+for dir in "${MODULE_DIRS[@]}"; do
+  pushd "$dir" > /dev/null
+  for mod in "${MONOREPO_MODULES[@]}"; do
+    # Pin version if already required (ignores modules not in this module's deps)
+    if grep -q "\"${mod}\"" go.mod 2>/dev/null || grep -q "${mod} v" go.mod 2>/dev/null; then
+      go mod edit -require="${mod}@${version}" 2>/dev/null || true
+    fi
+    # Strip intra-monorepo replace directives
+    go mod edit -dropreplace="${mod}" 2>/dev/null || true
+  done
+  popd > /dev/null
+done
+success "go.mod files updated"
+
+echo ""
+echo -e "  Review the changelog and go.mod changes, then run:"
+echo -e "  ${bold}mise run release:tag${reset}"
+if [[ -z "${HIGHLIGHTS}" ]]; then
+  echo ""
+  echo -e "  ${cyan}Tip:${reset} Add release highlights with:"
+  echo -e "  ${bold}mise run release:prepare --highlights \"Your highlight text\"${reset}"
+fi
+echo ""

@@ -1,0 +1,19 @@
+# :schema https://mise.jdx.dev/schema/mise.json
+# SCAFFOLD: Merge common tools from assets/common/mise.toml into [tools]
+[tools]
+hk = "latest"
+git-cliff = "latest"
+typos = "latest"
+go = "latest"
+golangci-lint = "2"
+goreleaser = "latest"
+dprint = "latest"
+gofumpt = "latest"
+cocogitto = "latest"
+
+[env]
+HK_FILE = ".config/hk.pkl"
+HK_MISE = "1"
+
+# Tasks are file-based in .config/mise/tasks/
+# See assets/go/tasks/ for the task scripts

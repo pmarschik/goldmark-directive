@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#MISE description="Run all linters across workspace modules"
+#MISE sources=["**/*.go", ".config/golangci.yml", "go.work"]
+#USAGE flag "--no-cache" help="Bust golangci-lint cache before running (runs 'golangci-lint cache clean')"
+#USAGE arg "[args]..." help="Extra flags forwarded to golangci-lint run"
+set -euo pipefail
+
+lintargs=()
+for arg in "$@"; do
+  case "$arg" in
+    --no-cache) golangci-lint cache clean ;;
+    *) lintargs+=("$arg") ;;
+  esac
+done
+
+root=$(pwd)
+failed=0
+while IFS= read -r mod; do
+    echo "==> $mod"
+    if ! (cd "$root/$mod" && golangci-lint run -c "$root/.config/golangci.yml" "${lintargs[@]}"); then
+        echo "FAIL lint: $mod"
+        failed=1
+    fi
+done < <(sed -n '/^use/,/^)/p' go.work | grep -E '^\t\.' | tr -d '\t')
+
+dprint check -c .config/dprint.json
+exit $failed

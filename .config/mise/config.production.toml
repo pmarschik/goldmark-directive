@@ -1,0 +1,7 @@
+# :schema https://mise.jdx.dev/schema/mise.json
+# Production environment overrides
+# This file is loaded when MISE_ENV=production
+[env]
+# Add production-specific environment variables here
+# Example:
+# LOG_LEVEL = "info"

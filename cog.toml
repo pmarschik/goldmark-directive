@@ -1,0 +1,12 @@
+# Conventional commit scopes for this project.
+# Used by agents (via AGENTS.md reference) and optionally by cocogitto for enforcement.
+#
+# Component scopes:
+# - parser     the directive block/inline parsers
+# - ast        the directive AST node types
+# - docs       README, docs
+# - build      local tooling, mise, scripts, developer setup
+# - ci         GitHub Actions and CI automation
+# - release    release flow, changelog, versioning
+[commit]
+scopes = ["parser", "ast", "docs", "build", "ci", "release"]

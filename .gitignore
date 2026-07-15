@@ -1,0 +1,50 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+*~
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Local overrides
+local/
+.config/mise/config.local.toml
+.config/mise/*.local.toml
+
+# Database / issue tracking
+.dolt/
+*.db
+
+# Roam / Claude
+.roam/
+.claude/settings.local.json
+.claude/worktrees/
+CLAUDE.local.md
+AGENTS.local.md
+
+# Go
+/dist/
+/vendor/
+/kongfig
+*.exe
+/mini
+/standard
+/advanced
+/example/mini/mini
+/example/standard/standard
+/example/advanced/advanced
+
+/example/common/common
+/example/features/charming/charming
+/example/features/file/file
+/example/features/kong/kong
+/example/features/layers/layers
+/example/features/redacted/redacted
+/example/features/struct-tags/struct-tags
+/example/features/xdg/xdg
+/full
+/example/full/full
+/example/minimal/minimal

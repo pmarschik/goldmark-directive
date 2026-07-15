@@ -1,0 +1,206 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    # Bug detection
+    - bodyclose
+    - nilerr
+    - nilnesserr
+    - sqlclosecheck
+    - rowserrcheck
+    - durationcheck
+    - noctx
+    - asasalint
+    - makezero
+    - musttag
+    - exhaustive
+    - exptostd
+
+    # Error handling
+    - errorlint
+    - errname
+
+    # Style & quality
+    - revive
+    - gocritic
+    - misspell
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - predeclared
+    - whitespace
+    - modernize
+    - intrange
+    - perfsprint
+    - tagalign
+
+    # Complexity
+    - cyclop
+    - gocognit
+    - nestif
+    - funlen
+
+    # Security
+    - gosec
+    - bidichk
+
+    # Module hygiene
+    - depguard
+    - gomoddirectives
+
+    # Test quality
+    - thelper
+    - usetesting
+
+    # Meta
+    - nolintlint
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    govet:
+      enable-all: true
+      disable:
+        - printf # panics on unsafe pseudo-package in some analysis contexts; covered by staticcheck
+
+    staticcheck:
+      checks: ["all"]
+
+    gocritic:
+      enable-all: true
+      disabled-checks:
+        - hugeParam
+
+    cyclop:
+      max-complexity: 15
+      package-average: 8.0
+
+    gocognit:
+      min-complexity: 25
+
+    funlen:
+      lines: 100
+      statements: 60
+
+    nestif:
+      min-complexity: 5
+
+    gosec:
+      severity: medium
+      confidence: medium
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
+    gomoddirectives:
+      replace-local: true
+
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: "math/rand$"
+              desc: "use math/rand/v2 instead"
+            - pkg: "github.com/golang/protobuf"
+              desc: "use google.golang.org/protobuf instead"
+            - pkg: "io/ioutil"
+              desc: "use io and os packages instead (deprecated since Go 1.16)"
+            - pkg: "github.com/pkg/errors"
+              desc: "use fmt.Errorf with %w or stdlib errors"
+
+    misspell:
+      locale: US
+
+    revive:
+      severity: warning
+      confidence: 0.8
+      enable-default-rules: true
+      rules:
+        - name: unexported-return
+          disabled: true  # builder pattern: concrete return types enable method chaining
+        - name: early-return
+          severity: warning
+        - name: unnecessary-stmt
+          severity: warning
+        - name: confusing-naming
+          severity: warning
+        - name: confusing-results
+          severity: warning
+        - name: deep-exit
+          severity: warning
+        - name: import-shadowing
+          severity: warning
+        - name: modifies-value-receiver
+          severity: warning
+        - name: redefines-builtin-id
+          severity: warning
+        - name: waitgroup-by-value
+          severity: error
+        - name: unconditional-recursion
+          severity: error
+        - name: identical-branches
+          severity: warning
+        - name: defer
+          severity: warning
+          arguments:
+            - ["call-chain", "loop"]
+        - name: unused-receiver
+          severity: warning
+        - name: empty-block
+          severity: warning
+
+    tagalign:
+      sort: true
+      align: true
+      order:
+        - kong
+        - name
+        - short
+        - env
+        - config
+        - default
+        - optional
+        - type
+        - placeholder
+        - enum
+        - embed
+        - negatable
+        - help
+        - json
+        - yaml
+        - toml
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+    paths:
+      - third_party
+      - vendor
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra-rules: true
+  exclusions:
+    paths:
+      - third_party
+      - vendor
+
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 5

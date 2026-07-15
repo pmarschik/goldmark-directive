@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+#MISE description="Run checks on changed files only"
+set -euo pipefail
+hk check

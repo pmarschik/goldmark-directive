@@ -1,0 +1,8 @@
+# :schema https://mise.jdx.dev/schema/mise.json
+# Development environment overrides
+# This file is loaded when MISE_ENV=development (set in .config/mise/miserc.toml)
+[env]
+# Add development-specific environment variables here
+# Example:
+# LOG_LEVEL = "debug"
+# DATABASE_URL = "postgresql://localhost/myapp_dev"

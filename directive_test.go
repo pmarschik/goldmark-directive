@@ -32,13 +32,15 @@ func parse(t *testing.T, src string) ast.Node {
 // findNode returns the first node of the given kind (depth first).
 func findNode(root ast.Node, kind ast.NodeKind) ast.Node {
 	var found ast.Node
-	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+	if err := ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering && n.Kind() == kind {
 			found = n
 			return ast.WalkStop, nil
 		}
 		return ast.WalkContinue, nil
-	})
+	}); err != nil {
+		panic(err)
+	}
 	return found
 }
 
@@ -48,7 +50,10 @@ func TestContainerDirective(t *testing.T) {
 	if n == nil {
 		t.Fatal("no container directive parsed")
 	}
-	cd := n.(*ContainerDirective)
+	cd, ok := n.(*ContainerDirective)
+	if !ok {
+		t.Fatalf("wrong node type %T", n)
+	}
 	if cd.Name != "note" {
 		t.Errorf("name %q", cd.Name)
 	}
@@ -67,15 +72,16 @@ func TestContainerDirective(t *testing.T) {
 
 func TestContainerNesting(t *testing.T) {
 	root := parse(t, "::::outer\n:::inner\nx\n:::\n::::\n")
-	outer := findNode(root, KindContainerDirective).(*ContainerDirective)
-	if outer.Name != "outer" {
+	outer, ok := findNode(root, KindContainerDirective).(*ContainerDirective)
+	if !ok || outer.Name != "outer" {
 		t.Fatalf("outer name %q", outer.Name)
 	}
 	inner := findNode(outer, KindContainerDirective)
 	if inner == outer {
 		inner = findNode(outer.FirstChild(), KindContainerDirective)
 	}
-	if inner == nil || inner.(*ContainerDirective).Name != "inner" {
+	innerCD, ok := inner.(*ContainerDirective)
+	if !ok || innerCD.Name != "inner" {
 		t.Error("inner container not nested")
 	}
 }
@@ -86,7 +92,10 @@ func TestLeafDirective(t *testing.T) {
 	if n == nil {
 		t.Fatal("no leaf directive parsed")
 	}
-	ld := n.(*LeafDirective)
+	ld, ok := n.(*LeafDirective)
+	if !ok {
+		t.Fatalf("wrong node type %T", n)
+	}
 	if ld.Name != "media" || ld.Attrs["width"] != "80" {
 		t.Errorf("leaf %q %v", ld.Name, ld.Attrs)
 	}
@@ -105,7 +114,10 @@ func TestTextDirective(t *testing.T) {
 	if n == nil {
 		t.Fatal("no text directive parsed")
 	}
-	td := n.(*TextDirective)
+	td, ok := n.(*TextDirective)
+	if !ok {
+		t.Fatalf("wrong node type %T", n)
+	}
 	if td.Name != "status" || td.Attrs["color"] != "green" {
 		t.Errorf("text %q %v", td.Name, td.Attrs)
 	}
@@ -130,7 +142,10 @@ func TestTextDirectiveGuards(t *testing.T) {
 func TestCloseFenceNeedsEnoughColons(t *testing.T) {
 	// The 3-colon line cannot close a 4-colon container.
 	root := parse(t, "::::note\nx\n:::\n")
-	cd := findNode(root, KindContainerDirective).(*ContainerDirective)
+	cd, ok := findNode(root, KindContainerDirective).(*ContainerDirective)
+	if !ok {
+		t.Fatal("no container directive parsed")
+	}
 	// The ::: line stays inside the (unclosed) container as content.
 	if cd.NextSibling() != nil {
 		t.Error("container should consume the short fence")

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Run all quality gates (format + lint + typos + test)"
+#MISE alias="chk"
+#MISE depends=["fmt", "typos", "test"]
+set -euo pipefail
+# lint runs after fmt to avoid parallel golangci-lint lock conflicts
+mise run lint

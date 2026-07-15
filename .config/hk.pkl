@@ -1,0 +1,71 @@
+amends "package://github.com/jdx/hk/releases/download/v1.41.1/hk@1.41.1#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.41.1/hk@1.41.1#/Builtins.pkl"
+
+// dprint: extend builtin, injecting project config file before the files placeholder.
+local dprint: Step = (Builtins.dprint) {
+    check            = Builtins.dprint.check!!.replaceAll("{{ files }}", "-c .config/dprint.json {{ files }}")
+    check_list_files = Builtins.dprint.check_list_files!!.replaceAll("{{ files }}", "-c .config/dprint.json {{ files }}")
+    fix              = Builtins.dprint.fix!!.replaceAll("{{ files }}", "-c .config/dprint.json {{ files }}")
+}
+
+// golangci_lint: run once from repo root using go.work workspace mode.
+// workspace_indicator="go.work" → single invocation from repo root (avoids parallel conflicts).
+// replaceAll injects the project config file, same pattern as dprint above.
+local golangci_lint: Step = (Builtins.golangci_lint) {
+    check               = Builtins.golangci_lint.check!!.replaceAll("./...", "-c .config/golangci.yml ./...")
+    fix                 = Builtins.golangci_lint.fix!!.replaceAll("./...", "-c .config/golangci.yml ./...")
+    workspace_indicator = "go.work"
+}
+
+local formatters = new Mapping<String, Step> {
+    ["go_fumpt"] = Builtins.go_fumpt
+    ["dprint"] = dprint
+}
+
+local all_steps = new Mapping<String, Step> {
+    ["go_fumpt"]    = Builtins.go_fumpt
+    ["dprint"]      = dprint
+    ["golangci_lint"] = golangci_lint
+    ["typos"]       = Builtins.typos
+    ["go_vet"]      = Builtins.go_vet
+    ["gomod_tidy"]  = Builtins.gomod_tidy
+}
+
+local fix_steps = new Mapping<String, Step> {
+    ["go_fumpt"]    = Builtins.go_fumpt
+    ["dprint"]      = dprint
+    ["golangci_lint"] = golangci_lint
+    ["typos"]       = Builtins.typos
+}
+
+local lint_steps = new Mapping<String, Step> {
+    ["golangci_lint"] = golangci_lint
+    ["typos"]       = Builtins.typos
+    ["go_vet"]      = Builtins.go_vet
+    ["gomod_tidy"]  = Builtins.gomod_tidy
+}
+
+hooks {
+    ["pre-commit"] {
+        fix = true
+        stash = "git"
+        steps = all_steps
+    }
+    ["pre-push"] {
+        steps = all_steps
+    }
+    ["fmt"] {
+        fix = true
+        steps = formatters
+    }
+    ["lint"] {
+        steps = lint_steps
+    }
+    ["fix"] {
+        fix = true
+        steps = fix_steps
+    }
+    ["check"] {
+        steps = all_steps
+    }
+}

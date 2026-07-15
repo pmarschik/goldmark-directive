@@ -302,10 +302,10 @@ func scanDirectiveMarkerLine(line []byte) *directiveMarker {
 	return m
 }
 
-// isDirectiveCloseFence reports whether line is a valid closing fence for a
+// isCloseFence reports whether line is a valid closing fence for a
 // container opened with fenceLength colons (≥ fenceLength colons, up to 3
 // leading spaces, nothing but whitespace after).
-func isDirectiveCloseFence(line []byte, fenceLength int) bool {
+func isCloseFence(line []byte, fenceLength int) bool {
 	i := 0
 	for i < len(line) && i < 3 && line[i] == ' ' {
 		i++
@@ -364,7 +364,7 @@ func (*containerDirectiveParser) Open(_ ast.Node, reader text.Reader, _ parser.C
 func (*containerDirectiveParser) Continue(node ast.Node, reader text.Reader, _ parser.Context) parser.State {
 	line, _ := reader.PeekLine()
 	cd, ok := node.(*ContainerDirective)
-	if ok && isDirectiveCloseFence(line, cd.fenceLength) {
+	if ok && isCloseFence(line, cd.fenceLength) {
 		// Detect the close but do NOT consume the line: goldmark re-evaluates
 		// the line after Close, and an open inner paragraph would otherwise
 		// lazily continue across the fence, canceling the close. The
@@ -385,19 +385,19 @@ func (*containerDirectiveParser) CanAcceptIndentedLine() bool { return false }
 // Close fence parser
 // ---------------------------------------------------------------------------
 
-// KindDirectiveCloseFence is the node kind for consumed closing fences.
-var KindDirectiveCloseFence = ast.NewNodeKind("DirectiveCloseFence")
+// KindCloseFence is the node kind for consumed closing fences.
+var KindCloseFence = ast.NewNodeKind("DirectiveCloseFence")
 
-// DirectiveCloseFence is an inert marker for a consumed ::: closing fence.
+// CloseFence is an inert marker for a consumed ::: closing fence.
 // It exists only so the fence line can interrupt an open paragraph via the
 // regular block-open machinery; consumers must ignore it.
-type DirectiveCloseFence struct {
+type CloseFence struct {
 	ast.BaseBlock
 }
 
-func (*DirectiveCloseFence) Kind() ast.NodeKind { return KindDirectiveCloseFence }
+func (*CloseFence) Kind() ast.NodeKind { return KindCloseFence }
 
-func (n *DirectiveCloseFence) Dump(source []byte, level int) {
+func (n *CloseFence) Dump(source []byte, level int) {
 	ast.DumpHelper(n, source, level, nil, nil)
 }
 
@@ -420,7 +420,7 @@ func (*closeFenceParser) Open(_ ast.Node, reader text.Reader, pc parser.Context)
 	// blocks must accept this line as its closing fence.
 	matched := false
 	for _, be := range pc.OpenedBlocks() {
-		if cd, ok := be.Node.(*ContainerDirective); ok && isDirectiveCloseFence(line, cd.fenceLength) {
+		if cd, ok := be.Node.(*ContainerDirective); ok && isCloseFence(line, cd.fenceLength) {
 			matched = true
 			break
 		}
@@ -429,7 +429,7 @@ func (*closeFenceParser) Open(_ ast.Node, reader text.Reader, pc parser.Context)
 		return nil, parser.NoChildren
 	}
 	reader.Advance(seg.Len() - 1)
-	return &DirectiveCloseFence{}, parser.NoChildren
+	return &CloseFence{}, parser.NoChildren
 }
 
 func (*closeFenceParser) Continue(_ ast.Node, _ text.Reader, _ parser.Context) parser.State {

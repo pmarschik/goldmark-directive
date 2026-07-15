@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#MISE description="Tidy all workspace modules (parallel)"
+#MISE sources=["**/go.mod", "**/go.sum", "go.work"]
+set -euo pipefail
+
+root=$(pwd)
+declare -a pids=()
+declare -a mods=()
+
+while IFS= read -r mod; do
+    mods+=("$mod")
+    (cd "$root/$mod" && go mod tidy) &
+    pids+=($!)
+done < <(sed -n '/^use/,/^)/p' go.work | grep -E '^\t\.' | tr -d '\t')
+
+failed=0
+for i in "${!pids[@]}"; do
+    if ! wait "${pids[$i]}"; then
+        echo "FAIL tidy: ${mods[$i]}"
+        failed=1
+    fi
+done
+exit $failed

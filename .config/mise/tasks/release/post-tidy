@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+#MISE description="Update go.sum files post-publish — manual recovery step (release:tag runs this automatically)"
+set -euo pipefail
+# shellcheck source=_lib.sh
+source "$(dirname "$0")/_lib.sh"
+
+# go.sum entries for cross-module workspace deps can only be computed after the
+# new version exists on the proxy. This step runs post-push with GOWORK=off so
+# Go sees each module's cross-deps as external and writes correct checksums.
+# Commit the resulting go.sum changes as an untagged housekeeping commit.
+
+echo ""
+echo -e "${bold}🔑 Post-release go.sum tidy…${reset}"
+echo ""
+
+detect_vcs
+discover_modules
+
+version=$(git tag --sort=-version:refname | grep '^v[0-9]' | head -1)
+[[ -n "${version}" ]] || die "no version tag found — run 'mise run release:tag' first"
+info "Version: ${bold}${version}${reset}"
+
+max_wait=120
+info "Waiting for proxy to serve ${version}…"
+elapsed=0
+until GOWORK=off GONOSUMDB="${ROOT_MODULE}" go mod download "${ROOT_MODULE}@${version}" 2>/dev/null; do
+  elapsed=$((elapsed + 5))
+  [[ $elapsed -ge $max_wait ]] && die "Timed out — proxy not serving ${version} yet. Retry later."
+  sleep 5
+done
+success "Proxy is serving ${version}"
+
+info "Syncing go.work.sum…"
+GONOSUMDB="${ROOT_MODULE}" go work sync
+success "go.work.sum synced"
+
+info "Tidying go.sum files…"
+for dir in "${MODULE_DIRS[@]}"; do
+  pushd "$dir" > /dev/null
+  GOWORK=off GONOSUMDB="${ROOT_MODULE}" go mod tidy
+  popd > /dev/null
+done
+success "go.sum files updated"
+
+echo ""
+echo -e "  Review the go.sum changes, then commit and push:"
+echo -e "  ${bold}jj commit -m \"chore: update go.sum after ${version}\"${reset}"
+echo ""

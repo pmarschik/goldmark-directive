@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+#MISE description="Push the tagged release to GitHub — manual recovery step (release:tag runs this automatically)"
+set -euo pipefail
+# shellcheck source=_lib.sh
+source "$(dirname "$0")/_lib.sh"
+
+echo ""
+echo -e "${bold}🚀 Pushing release…${reset}"
+echo ""
+
+detect_vcs
+info "VCS: ${VCS}"
+
+# ── resolve version from most recent local v* tag ────────────────────────────
+version=$(git tag --sort=-version:refname | grep '^v[0-9]' | head -1)
+[[ -n "${version}" ]] || die "no version tag found — run 'mise run release:tag' first"
+info "Version: ${bold}${version}${reset}"
+echo ""
+
+# ── advance main bookmark to the tagged commit ────────────────────────────────
+if [[ "${VCS}" == "jj" ]]; then
+  info "Advancing main bookmark to ${version}…"
+  jj bookmark set main -r "${version}"
+  success "main → ${version}"
+fi
+
+# ── push branch ───────────────────────────────────────────────────────────────
+if [[ "${VCS}" == "jj" ]]; then
+  info "Pushing bookmark (requires hardware key)…"
+  jj git push --all
+else
+  info "Pushing branch…"
+  HK=0 git push origin HEAD
+fi
+success "Branch pushed"
+
+# ── push root tag alone first ─────────────────────────────────────────────────
+# GitHub suppresses push events when > 3 tags are pushed at once, so the root
+# tag must be pushed separately to reliably trigger GitHub Actions.
+info "Pushing root tag ${version} (triggers GitHub Actions)…"
+HK=0 git push origin "refs/tags/${version}"
+success "Root tag pushed"
+
+# ── push sub-module tags ──────────────────────────────────────────────────────
+info "Pushing sub-module tags…"
+HK=0 git push --tags
+success "Sub-module tags pushed"
+
+# ── update GitHub release notes from CHANGELOG.md ────────────────────────────
+info "Updating GitHub release notes…"
+notes=$(awk '/^## \[/{if(p) exit; p=1; next} p' CHANGELOG.md | sed '/./,$!d')
+if gh release view "${version}" &>/dev/null; then
+  gh release edit "${version}" --notes "${notes}"
+else
+  gh release create "${version}" --title "${version}" --notes "${notes}"
+fi
+success "Release notes updated"
+
+echo ""
+echo -e "  ${green}${bold}✓ Release ${version} is live.${reset}"
+echo ""
+echo -e "  ${yellow}Next:${reset} Update go.sum files with the published module checksums:"
+echo -e "  ${bold}mise run release:post-tidy${reset}"
+echo ""

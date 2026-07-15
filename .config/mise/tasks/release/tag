@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+#MISE description="Commit, tag, push, and tidy go.sum — full release after reviewing release:prepare output"
+set -euo pipefail
+# shellcheck source=_lib.sh
+source "$(dirname "$0")/_lib.sh"
+
+echo ""
+echo -e "${bold}🏷️  Releasing…${reset}"
+echo ""
+
+# ── detect VCS ───────────────────────────────────────────────────────────────
+detect_vcs
+info "VCS: ${VCS}"
+
+# ── defensive checks ─────────────────────────────────────────────────────────
+if [[ "${VCS}" == "git" ]]; then
+  branch=$(git branch --show-current)
+  [[ "${branch}" == "main" || "${branch}" == "master" ]] \
+    || die "must be on main/master branch (current: ${branch})"
+  dirty=$(git status --porcelain | grep -v '^\?\?' | grep -v 'CHANGELOG.md' || true)
+  [[ -z "${dirty}" ]] \
+    || die "unexpected uncommitted changes — only CHANGELOG.md expected:\n${dirty}"
+fi
+
+[[ -n "$(git diff HEAD -- CHANGELOG.md 2>/dev/null || git status --porcelain CHANGELOG.md)" ]] \
+  || die "CHANGELOG.md has no pending changes — run 'mise run release:prepare' first"
+
+# ── resolve version ──────────────────────────────────────────────────────────
+raw_version=$(git cliff --config .config/cliff.toml --bumped-version ${JJ_HEAD} 2>/dev/null \
+  || die "could not determine version from git cliff")
+version="v${raw_version#v}"  # ensure v prefix
+info "Version: ${bold}${version}${reset}"
+
+# ── extract highlights ────────────────────────────────────────────────────────
+HIGHLIGHTS=$(awk '/^## \[/{found=1; next} found && /^###/{exit} found && NF{print}' CHANGELOG.md | sed 's/^[[:space:]]*//')
+[[ -n "${HIGHLIGHTS}" ]] && info "Highlights: ${HIGHLIGHTS}"
+echo ""
+
+# ── confirm ──────────────────────────────────────────────────────────────────
+confirm "Commit, tag ${version}, push, and tidy go.sum?" \
+  || { warn "Aborted."; echo ""; exit 0; }
+echo ""
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 1 — commit + tag
+# ═══════════════════════════════════════════════════════════════════════════════
+if [[ "${VCS}" == "jj" ]]; then
+  jj describe -m "chore(release): ${version}"
+else
+  git add CHANGELOG.md
+  git commit -m "chore(release): ${version}"
+fi
+success "Committed: chore(release): ${version}"
+
+discover_modules
+
+if [[ "${VCS}" == "jj" ]]; then
+  RELEASE_COMMIT=$(jj log -r @ --no-graph --template 'commit_id')
+  jj tag set "${version}"
+else
+  RELEASE_COMMIT=$(git rev-parse HEAD)
+  git tag --no-sign -a "${version}" -m "${HIGHLIGHTS:-${version}}"
+fi
+success "Tagged root: ${version}"
+
+for mod in "${MONOREPO_MODULES[@]}"; do
+  [[ "$mod" == "${ROOT_MODULE}" ]] && continue
+  subpath="${mod#${ROOT_MODULE}/}"
+  git tag --no-sign "${subpath}/${version}" "${RELEASE_COMMIT}"
+done
+success "Tagged sub-modules: ${version}"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 2 — push (requires hardware key touch)
+# ═══════════════════════════════════════════════════════════════════════════════
+echo ""
+info "Pushing… (hardware key touch required)"
+
+if [[ "${VCS}" == "jj" ]]; then
+  jj bookmark set main -r "${version}"
+  jj git push --all
+else
+  HK=0 git push origin HEAD
+fi
+success "Branch pushed"
+
+# Root tag first — GitHub suppresses push events when >3 tags arrive at once.
+HK=0 git push origin "refs/tags/${version}"
+success "Root tag pushed"
+HK=0 git push --tags
+success "Sub-module tags pushed"
+
+info "Updating GitHub release notes…"
+notes=$(awk '/^## \[/{if(p) exit; p=1; next} p' CHANGELOG.md | sed '/./,$!d')
+if gh release view "${version}" &>/dev/null; then
+  gh release edit "${version}" --notes "${notes}"
+else
+  gh release create "${version}" --title "${version}" --notes "${notes}"
+fi
+success "Release notes updated"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 3 — wait for proxy, tidy go.sum, commit + push (second key touch)
+# ═══════════════════════════════════════════════════════════════════════════════
+echo ""
+info "Waiting for proxy to serve ${version}…"
+max_wait=120
+elapsed=0
+until GOWORK=off GONOSUMDB="${ROOT_MODULE}" go mod download "${ROOT_MODULE}@${version}" 2>/dev/null; do
+  elapsed=$((elapsed + 5))
+  [[ $elapsed -ge $max_wait ]] && {
+    warn "Proxy timeout — run 'mise run release:post-tidy' later to finish go.sum update."
+    echo ""
+    echo -e "  ${green}${bold}✓ Release ${version} is live (go.sum tidy pending).${reset}"
+    echo ""
+    exit 0
+  }
+  sleep 5
+done
+success "Proxy is serving ${version}"
+
+info "Syncing go.work.sum…"
+GONOSUMDB="${ROOT_MODULE}" go work sync
+success "go.work.sum synced"
+
+info "Tidying go.sum files…"
+for dir in "${MODULE_DIRS[@]}"; do
+  pushd "$dir" > /dev/null
+  GOWORK=off GONOSUMDB="${ROOT_MODULE}" go mod tidy
+  popd > /dev/null
+done
+success "go.sum files updated"
+
+if [[ "${VCS}" == "jj" ]]; then
+  jj commit -m "chore: update go.sum after ${version}"
+else
+  git add '*/go.sum' go.sum go.work.sum 2>/dev/null || true
+  git commit -m "chore: update go.sum after ${version}"
+fi
+success "go.sum commit created"
+
+info "Pushing go.sum commit… (hardware key touch required)"
+if [[ "${VCS}" == "jj" ]]; then
+  jj git push --all
+else
+  HK=0 git push origin HEAD
+fi
+success "go.sum commit pushed"
+
+echo ""
+echo -e "  ${green}${bold}✓ Release ${version} is complete.${reset}"
+echo ""

@@ -1,0 +1,14 @@
+version: 2
+project_name: goldmark-directive
+
+builds:
+  - skip: true
+
+release:
+  github:
+    owner: pmarschik
+    name: goldmark-directive
+  prerelease: auto
+
+changelog:
+  disable: true

@@ -8,7 +8,7 @@ generic directives for [goldmark](https://github.com/yuin/goldmark):
 container content
 :::
 
-::name[label]{attrs}      leaf (single-line block)
+::name[label]{attrs} leaf (single-line block)
 
 inline :name[label]{attrs} directives
 ```
@@ -49,3 +49,9 @@ constructs, or `nil` for a minimal default.
 The AST nodes are `ContainerDirective`, `LeafDirective`, and `TextDirective`
 (with `Name`, `Attrs`, and label access); `DirectiveCloseFence` is an inert
 marker consumers should ignore.
+
+## Development
+
+Tooling is managed with [mise](https://mise.jdx.dev): `mise run setup` once,
+then `mise run check` (format + lint + typos + test) before pushing. Commits
+follow Conventional Commits; see AGENTS.md for contributor guidelines.

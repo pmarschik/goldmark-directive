@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#MISE description="Run all tests across workspace modules"
+#MISE alias="t"
+#MISE sources=["**/*.go", "go.work"]
+#USAGE flag "--no-cache" help="Bypass Go test result cache (translates to -count=1)"
+#USAGE arg "[args]..." help="Extra flags forwarded to go test (e.g. -run TestFoo -v)"
+set -euo pipefail
+
+no_cache=0
+for arg in "$@"; do
+    [[ "$arg" == "--no-cache" ]] && no_cache=1
+done
+[[ $no_cache -eq 1 ]] && go clean -testcache
+
+root=$(pwd)
+failed=0
+while IFS= read -r mod; do
+    echo "==> $mod"
+    if ! (cd "$root/$mod" && go test ./...); then
+        echo "FAIL test: $mod"
+        failed=1
+    fi
+done < <(sed -n '/^use/,/^)/p' go.work | grep -E '^\t\.' | tr -d '\t')
+
+exit $failed

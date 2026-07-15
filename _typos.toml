@@ -1,0 +1,3 @@
+[default.extend-identifiers]
+# goldmark's own API name (text.Reader) — not ours to fix.
+PrecendingCharacter = "PrecendingCharacter"
