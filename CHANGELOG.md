@@ -1,6 +1,14 @@
-## [v0.1.0] - 2026-07-15
+## [v0.2.0] - 2026-07-17
 
-remark-directive-compatible container/leaf/text directives for goldmark, with typed node registration and one-call setup
+### 🚀 Features
+
+- Support value binding without named key
+
+### 📚 Documentation
+
+- Goldmark-directive is standalone — drop private downstream mention
+
+## [v0.1.0] - 2026-07-15
 
 ### 🚀 Features
 
@@ -10,4 +18,5 @@ remark-directive-compatible container/leaf/text directives for goldmark, with ty
 ### 💼 Other
 
 - Mise + hk + CI scaffolding (kongfig-style)
+  [v0.2.0]: https://github.com/pmarschik/goldmark-directive/releases/tag/v0.2.0
   [v0.1.0]: https://github.com/pmarschik/goldmark-directive/releases/tag/v0.1.0
