@@ -1,8 +1,10 @@
 package directive
 
 import (
+	"fmt"
 	"reflect"
 	"strconv"
+	"sync"
 
 	"github.com/yuin/goldmark/ast"
 )
@@ -18,6 +20,7 @@ type nodeOf[T any] interface {
 // directive, binding attributes into `directive:"name"`-tagged fields
 // (see BindAttrs). Use with Handlers or RegisterContainer.
 func Container[T any, PT nodeOf[T]]() func(*ContainerDirective) ast.Node {
+	valueFieldIndex(reflect.TypeFor[T]())
 	return func(d *ContainerDirective) ast.Node {
 		n := PT(new(T))
 		BindAttrs(n, d.Attrs)
@@ -28,6 +31,7 @@ func Container[T any, PT nodeOf[T]]() func(*ContainerDirective) ast.Node {
 // Leaf returns a handler that constructs *T for a leaf directive, binding
 // attributes into `directive:"name"`-tagged fields.
 func Leaf[T any, PT nodeOf[T]]() func(*LeafDirective) ast.Node {
+	valueFieldIndex(reflect.TypeFor[T]())
 	return func(d *LeafDirective) ast.Node {
 		n := PT(new(T))
 		BindAttrs(n, d.Attrs)
@@ -39,6 +43,7 @@ func Leaf[T any, PT nodeOf[T]]() func(*LeafDirective) ast.Node {
 // attributes into `directive:"name"`-tagged fields. The label binds to a
 // string field tagged `directive:",label"`.
 func Text[T any, PT nodeOf[T]]() func(*TextDirective) ast.Node {
+	valueFieldIndex(reflect.TypeFor[T]())
 	return func(d *TextDirective) ast.Node {
 		n := PT(new(T))
 		BindAttrs(n, d.Attrs)
@@ -77,12 +82,27 @@ func RegisterText[T any, PT nodeOf[T]](h *Handlers, name string) {
 // uint sizes, and floats; missing attributes leave the field's zero value,
 // unparsable values are skipped. The #id and .class shorthands arrive
 // under the "id" and "class" attribute names.
+//
+// A field tagged `directive:",value"` binds the bare-value form instead:
+// when the attributes contain exactly one key with an empty value (as
+// {14} or {wide} parse), that key string is converted into the field.
+// With zero or multiple empty-valued attributes the field stays zero.
+// A ",value" field must be the only attr-binding `directive:` tag on the
+// struct (a `directive:",label"` field is still allowed — it binds the
+// label, not attributes); violating this panics at registration time, or
+// on first bind when BindAttrs is called directly.
 func BindAttrs(target ast.Node, attrs map[string]string) {
+	v := reflect.ValueOf(target).Elem()
+	t := v.Type()
+	if idx := valueFieldIndex(t); idx >= 0 {
+		if key, ok := singleBareAttr(attrs); ok {
+			setField(v.Field(idx), key)
+		}
+		return
+	}
 	if len(attrs) == 0 {
 		return
 	}
-	v := reflect.ValueOf(target).Elem()
-	t := v.Type()
 	for i := range t.NumField() {
 		name, ok := t.Field(i).Tag.Lookup("directive")
 		if !ok || name == "" || name == ",label" {
@@ -94,6 +114,60 @@ func BindAttrs(target ast.Node, attrs map[string]string) {
 		}
 		setField(v.Field(i), raw)
 	}
+}
+
+// valueFieldCache memoizes per-type ",value" validation so the check runs
+// once per type (reflect.Type -> int field index, -1 when absent).
+var valueFieldCache sync.Map
+
+// valueFieldIndex returns the index of the `directive:",value"` field of t,
+// or -1 when t has none. It panics when the ",value" tag coexists with any
+// other attr-binding `directive:` tag (named attrs or a second ",value");
+// `directive:",label"` binds the label and is allowed alongside.
+func valueFieldIndex(t reflect.Type) int {
+	if cached, ok := valueFieldCache.Load(t); ok {
+		if idx, isInt := cached.(int); isInt {
+			return idx
+		}
+	}
+	valueIdx := -1
+	otherTag := ""
+	for i := range t.NumField() {
+		tag, ok := t.Field(i).Tag.Lookup("directive")
+		if !ok || tag == "" || tag == ",label" {
+			continue
+		}
+		if tag == ",value" {
+			if valueIdx >= 0 {
+				panic(fmt.Sprintf("directive: %s has multiple directive:\",value\" fields", t))
+			}
+			valueIdx = i
+			continue
+		}
+		otherTag = tag
+	}
+	if valueIdx >= 0 && otherTag != "" {
+		panic(fmt.Sprintf("directive: %s combines directive:\",value\" with directive:%q; \",value\" must be the only attr-binding tag", t, otherTag))
+	}
+	valueFieldCache.Store(t, valueIdx)
+	return valueIdx
+}
+
+// singleBareAttr returns the single bare attribute key — the one key whose
+// value is the empty string, as {14} or {wide} parse — and false when there
+// are zero or multiple empty-valued attributes.
+func singleBareAttr(attrs map[string]string) (string, bool) {
+	key, found := "", false
+	for k, v := range attrs {
+		if v != "" {
+			continue
+		}
+		if found {
+			return "", false
+		}
+		key, found = k, true
+	}
+	return key, found
 }
 
 // bindLabel assigns the raw label text to the field tagged

@@ -137,6 +137,31 @@ directive.RegisterText[Mention](&h, "mention")
 The `directive:",label"` tag binds the raw label text; `LabelRoot` on the
 generic node holds the parsed label inlines when you need structure.
 
+### Bare-value attributes — `directive:",value"`
+
+A `{value}` attribute block with a single bare token (`{14}`, `{wide}`)
+parses as a key with an empty value. Tag one field `directive:",value"` to
+bind that token directly (same conversions as named attrs):
+
+```markdown
+Use :fontSize[bigger text]{14} sparingly.
+```
+
+```go
+type FontSize struct {
+    ast.BaseInline
+    Size  int    `directive:",value"`
+    Label string `directive:",label"`
+}
+
+directive.RegisterText[FontSize](&h, "fontSize")
+```
+
+A `,value` field must be the **only** attr-binding `directive:` tag on the
+struct (`,label` is still fine — it binds the label, not attributes);
+registration panics otherwise. With zero or multiple bare tokens (`{a b}`)
+the field stays zero.
+
 ### Wiring it up
 
 ```go
