@@ -189,6 +189,25 @@ h.Container = map[string]func(*directive.ContainerDirective) ast.Node{
 Rendering is up to you — register `renderer.NodeRenderer` implementations
 for your node kinds (this library does not ship HTML renderers).
 
+## Source spans
+
+Every generic directive node records where it came from in a `Span`
+(`text.Segment`), so `src[n.Span.Start:n.Span.Stop]` is the directive's own
+source text. Offsets are **byte** offsets into the parsed source, and line
+terminators are excluded.
+
+| node                 | `Span` covers                         |
+| -------------------- | ------------------------------------- |
+| `LeafDirective`      | the whole `::name[label]{attrs}` line |
+| `TextDirective`      | the whole `:name[label]{attrs}` run   |
+| `CloseFence`         | the `:::` fence line                  |
+| `ContainerDirective` | the **opening fence line only**       |
+
+`ContainerDirective` is the exception: its end is not known when the block
+opens, so the full extent runs from `Span.Start` to the matching
+`CloseFence`'s `Span.Stop`. An unclosed container has no `CloseFence` at
+all — consumers decide its end themselves (last child, or end of input).
+
 ## Development
 
 Tooling is managed with [mise](https://mise.jdx.dev): `mise run setup` once,

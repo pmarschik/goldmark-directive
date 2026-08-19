@@ -45,6 +45,15 @@ type ContainerDirective struct {
 	Name  string
 	Attrs map[string]string
 	ast.BaseBlock
+	// Span covers the OPENING FENCE LINE ONLY — it is the one directive
+	// span that is not the node's whole extent, because the end is not
+	// known when the block opens. For a closed container the full extent
+	// runs from Span.Start to the matching CloseFence's Span.Stop; an
+	// unclosed container has no CloseFence at all, so consumers must take
+	// its end from the last child or the end of the enclosing block.
+	// Offsets are byte offsets into the parsed source (text.Segment
+	// semantics); the line terminator is excluded.
+	Span text.Segment
 	// fenceLength is the number of colons in the opening fence; the closing
 	// fence needs at least as many.
 	fenceLength int
@@ -65,6 +74,9 @@ type LeafDirective struct {
 	Name  string
 	Attrs map[string]string
 	ast.BaseBlock
+	// Span covers the directive's whole line, terminator excluded. Offsets
+	// are byte offsets into the parsed source (text.Segment semantics).
+	Span text.Segment
 }
 
 func (*LeafDirective) Kind() ast.NodeKind { return KindLeafDirective }
@@ -90,6 +102,10 @@ type TextDirective struct {
 	// as inline content.
 	LabelRoot ast.Node
 	ast.BaseInline
+	// Span covers the whole :name[label]{attrs} directive. Offsets are byte
+	// offsets into the parsed source (text.Segment semantics) — unlike
+	// LabelRoot's segments, which reference LabelSource.
+	Span text.Segment
 }
 
 func (*TextDirective) Kind() ast.NodeKind { return KindTextDirective }
@@ -302,6 +318,18 @@ func scanDirectiveMarkerLine(line []byte) *directiveMarker {
 	return m
 }
 
+// lineSpan returns the source span of the line segment seg with its
+// terminator stripped. It works off the source rather than the peeked line
+// so virtual bytes (segment padding, forced newlines) never shift the
+// offsets, which are byte offsets into source.
+func lineSpan(source []byte, seg text.Segment) text.Segment {
+	stop := seg.Stop
+	for stop > seg.Start && (source[stop-1] == '\n' || source[stop-1] == '\r') {
+		stop--
+	}
+	return text.NewSegment(seg.Start, stop)
+}
+
 // isCloseFence reports whether line is a valid closing fence for a
 // container opened with fenceLength colons (≥ fenceLength colons, up to 3
 // leading spaces, nothing but whitespace after).
@@ -346,6 +374,7 @@ func (p *containerDirectiveParser) Open(_ ast.Node, reader text.Reader, _ parser
 	node := &ContainerDirective{
 		Name:        m.name,
 		Attrs:       m.attrs,
+		Span:        lineSpan(reader.Source(), seg),
 		fenceLength: m.colons,
 	}
 	// The label becomes the first child paragraph; its line segment points
@@ -393,6 +422,10 @@ var KindCloseFence = ast.NewNodeKind("DirectiveCloseFence")
 // regular block-open machinery; consumers must ignore it.
 type CloseFence struct {
 	ast.BaseBlock
+	// Span covers the fence line, terminator excluded. Offsets are byte
+	// offsets into the parsed source (text.Segment semantics); the matching
+	// ContainerDirective's full extent ends at Span.Stop.
+	Span text.Segment
 }
 
 func (*CloseFence) Kind() ast.NodeKind { return KindCloseFence }
@@ -428,8 +461,9 @@ func (*closeFenceParser) Open(_ ast.Node, reader text.Reader, pc parser.Context)
 	if !matched {
 		return nil, parser.NoChildren
 	}
+	span := lineSpan(reader.Source(), seg)
 	reader.Advance(seg.Len() - 1)
-	return &CloseFence{}, parser.NoChildren
+	return &CloseFence{Span: span}, parser.NoChildren
 }
 
 func (*closeFenceParser) Continue(_ ast.Node, _ text.Reader, _ parser.Context) parser.State {
@@ -463,7 +497,7 @@ func (p *leafDirectiveParser) Open(_ ast.Node, reader text.Reader, _ parser.Cont
 		return nil, parser.NoChildren
 	}
 
-	node := &LeafDirective{Name: m.name, Attrs: m.attrs}
+	node := &LeafDirective{Name: m.name, Attrs: m.attrs, Span: lineSpan(reader.Source(), seg)}
 	// The label becomes the node's line so the inline pass parses it into
 	// the node's children (like an ATX heading's text).
 	if m.hasLabel && m.labelEnd > m.labelStart {
@@ -524,7 +558,7 @@ func defaultLabelParser() parser.Parser {
 func (*textDirectiveParser) Trigger() []byte { return []byte{':'} }
 
 func (p *textDirectiveParser) Parse(_ ast.Node, block text.Reader, _ parser.Context) ast.Node {
-	line, _ := block.PeekLine()
+	line, seg := block.PeekLine()
 	if len(line) < 2 || line[0] != ':' {
 		return nil
 	}
@@ -560,6 +594,10 @@ func (p *textDirectiveParser) Parse(_ ast.Node, block text.Reader, _ parser.Cont
 		node.Attrs = attrs
 		consumed = next
 	}
+
+	// seg.Start is the source offset of the directive's ':' — the trigger
+	// only fires on line[0], so no segment padding sits in front of it.
+	node.Span = text.NewSegment(seg.Start, seg.Start+consumed)
 
 	block.Advance(consumed)
 	return node
