@@ -1,3 +1,13 @@
+## [v0.3.0] - 2026-08-19
+
+### 🚀 Features
+
+- _(ast)_ Record source spans on directive nodes
+
+### ⚙️ Miscellaneous Tasks
+
+- Update go.sum after v0.2.0
+
 ## [v0.2.0] - 2026-07-17
 
 ### 🚀 Features
@@ -18,5 +28,6 @@
 ### 💼 Other
 
 - Mise + hk + CI scaffolding (kongfig-style)
+  [v0.3.0]: https://github.com/pmarschik/goldmark-directive/releases/tag/v0.3.0
   [v0.2.0]: https://github.com/pmarschik/goldmark-directive/releases/tag/v0.2.0
   [v0.1.0]: https://github.com/pmarschik/goldmark-directive/releases/tag/v0.1.0
