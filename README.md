@@ -17,8 +17,10 @@ The compatibility target is the **observed behavior** of remark-directive
 (micromark-extension-directive), including its edge rules:
 
 - names start alphanumeric, may contain `-`/`_`, but must not end with them
-- a text directive fails after `:` or `\`, and when the name is directly
-  followed by `:` (protects `:emoji:` shortcodes)
+- a text directive fails after `:`, after an ODD run of backslashes (the
+  last one is still an escape marker; an even run is literal backslashes
+  and the directive opens), and when the name is directly followed by `:`
+  (protects `:emoji:` shortcodes)
 - trailing non-whitespace on a container/leaf marker line invalidates it
 - close fences need at least as many colons as the opening fence
 - container labels become the first child paragraph (tagged with the

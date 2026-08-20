@@ -159,6 +159,34 @@ func TestTextDirectiveGuards(t *testing.T) {
 	}
 }
 
+// TestTextDirectiveBackslashRunParity pins the parity rule: only an
+// ODD-length run of backslashes before the ':' leaves an escape marker over
+// — an even run pairs up into literal backslashes and the directive opens.
+// Looking at the single preceding byte cannot tell the two apart.
+//
+// Measured against remark-parse 11 + remark-directive 4, which returns
+// exactly this column for these seven inputs.
+func TestTextDirectiveBackslashRunParity(t *testing.T) {
+	tests := []struct {
+		src  string
+		want bool // a text directive parses
+	}{
+		{"a :u[x] b\n", true},         // no backslash at all
+		{"a \\:u[x] b\n", false},      // one: the ':' is escaped
+		{"a \\\\:u[x] b\n", true},     // two: a literal backslash, ':' is free
+		{"a \\\\\\:u[x] b\n", false},  // three: a literal plus a marker
+		{"a \\\\\\\\:u[x] b\n", true}, // four
+		{":u[x]\n", true},             // a run of zero at the start of a line
+		{"a \\\n:u[x]\n", true},       // the backslash is a hard break, not a marker
+	}
+	for _, tt := range tests {
+		got := findNode(parse(t, tt.src), KindTextDirective) != nil
+		if got != tt.want {
+			t.Errorf("%q parsed a text directive = %v, want %v", tt.src, got, tt.want)
+		}
+	}
+}
+
 func TestCloseFenceNeedsEnoughColons(t *testing.T) {
 	// The 3-colon line cannot close a 4-colon container.
 	root := parse(t, "::::note\nx\n:::\n")

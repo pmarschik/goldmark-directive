@@ -564,7 +564,14 @@ func (p *textDirectiveParser) Parse(_ ast.Node, block text.Reader, _ parser.Cont
 	}
 	// A text directive cannot start right after another ':' (":::" runs in
 	// prose stay literal) or after a backslash escape.
-	if prev := block.PrecendingCharacter(); prev == ':' || prev == '\\' {
+	prev := block.PrecendingCharacter()
+	if prev == ':' {
+		return nil
+	}
+	// A '\\' before the ':' may be the escape marker OR an escaped literal
+	// backslash that escapes nothing — only the run's parity says which,
+	// and micromark decides it the same way.
+	if prev == '\\' && precedingBackslashRunIsOdd(block.Source(), seg.Start) {
 		return nil
 	}
 	nameEnd := scanDirectiveName(line, 1)
@@ -601,6 +608,25 @@ func (p *textDirectiveParser) Parse(_ ast.Node, block text.Reader, _ parser.Cont
 
 	block.Advance(consumed)
 	return node
+}
+
+// precedingBackslashRunIsOdd reports whether the run of backslashes ending
+// at src[pos-1] has odd length, i.e. whether the last one is still acting
+// as an escape marker.
+//
+// PrecendingCharacter only sees ONE byte back, which cannot tell "\:u" (the
+// colon is escaped, no directive) from "\\:u" (the pair is an escaped
+// literal backslash and the colon is free). Every even-length run pairs up
+// into literal backslashes; only an odd one leaves a marker over. Reading
+// the raw source rather than the decoded text is safe for this: a run is
+// contiguous by definition, and any byte that ends it — a newline, a list
+// indent, a blockquote marker — ends it correctly at zero.
+func precedingBackslashRunIsOdd(src []byte, pos int) bool {
+	run := 0
+	for i := pos - 1; i >= 0 && src[i] == '\\'; i-- {
+		run++
+	}
+	return run%2 == 1
 }
 
 // parseInlineFragment parses a label fragment with a nested parser and
